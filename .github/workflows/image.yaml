@@ -12,11 +12,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
+      - name: Determine registry
+        id: registry
+        env:
+          FOLDER: ${{ matrix.folder }}
+        run: |
+          set -euo pipefail
+
+          registry=ttl.sh
+          if [ "$GITHUB_REPOSITORY_OWNER" = k0sproject ] && [ "$GITHUB_REF" = refs/heads/main ]; then
+            registry=quay.io
+          fi
+
+          {
+            echo "registry=$registry"
+          } | tee -- "$GITHUB_OUTPUT"
+
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v3
         with:
-          images: quay.io/k0sproject/pushgateway-ttl
+          images: ${{ steps.registry.outputs.registry }}/${{ github.repository_owner }}/pushgateway-ttl
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -32,8 +48,8 @@ jobs:
         uses: docker/setup-buildx-action@v1
 
       - name: Login to Quay
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v1
+        if: steps.registry.outputs.registry == 'quay.io'
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4
         with:
           username: ${{ secrets.QUAY_USER }}
           password: ${{ secrets.QUAY_PASSWORD }}
@@ -46,6 +62,6 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64,linux/arm/v7
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
